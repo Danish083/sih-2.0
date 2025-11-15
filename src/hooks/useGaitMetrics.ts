@@ -122,6 +122,7 @@ export const useGaitMetrics = (): GaitMetricsState => {
       try {
         const response = await fetch(`${API_BASE}/api/data/historical`);
         if (response.ok) {
+          console.log(response);
           const result: { success: boolean; data: BackendGaitItem[] } = await response.json();
           if (result.success && result.data) {
             // Map backend historical data to frontend type
