@@ -40,29 +40,29 @@ export function ProfileDropdown({
   const [currentUser, setCurrentUser] = useState(user);
 
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        const response = await fetch('https://internal-backend-1ju5.onrender.com/api/user/profile', {
-          method: 'GET',
-          credentials: 'include',
-        });
-        if (response.ok) {
-          const data = await response.json();
-          const userData = data.user;
-          setCurrentUser({
-            name: userData.firstName && userData.lastName ? `${userData.firstName} ${userData.lastName}` : user.name,
-            email: userData.email || user.email,
-            role: userData.role || user.role,
-            avatar: userData.avatar || user.avatar
-          });
-        } else {
-          console.error('Failed to fetch user profile');
-        }
-      } catch (error) {
-        console.error('Error fetching user profile:', error);
-      }
-    };
-    fetchUserProfile();
+    // const fetchUserProfile = async () => {
+    //   try {
+    //     const response = await fetch('https://localhost:5000/api/user/profile', {
+    //       method: 'GET',
+    //       credentials: 'include',
+    //     });
+    //     if (response.ok) {
+    //       const data = await response.json();
+    //       const userData = data.user;
+    //       setCurrentUser({
+    //         name: userData.firstName && userData.lastName ? `${userData.firstName} ${userData.lastName}` : user.name,
+    //         email: userData.email || user.email,
+    //         role: userData.role || user.role,
+    //         avatar: userData.avatar || user.avatar
+    //       });
+    //     } else {
+    //       console.error('Failed to fetch user profile');
+    //     }
+    //   } catch (error) {
+    //     console.error('Error fetching user profile:', error);
+    //   }
+    // };
+    // fetchUserProfile();
   }, []);
 
   const handleSignOut = async () => {
