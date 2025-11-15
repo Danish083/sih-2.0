@@ -120,9 +120,14 @@ export const useGaitMetrics = (): GaitMetricsState => {
       if (!API_BASE) return; // Guard against undefined API_BASE
 
       try {
-        const response = await fetch(`${API_BASE}/api/data/historical`);
+        const response = await fetch(`${API_BASE}/api/data/historical`, {
+        method: "GET",
+        headers: {
+         "ngrok-skip-browser-warning": "69420"
+          }
+});
         if (response.ok) {
-          console.log(response);
+          console.log(response.body);
           const result: { success: boolean; data: BackendGaitItem[] } = await response.json();
           if (result.success && result.data) {
             // Map backend historical data to frontend type
