@@ -2,17 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { GaitDataEntry } from '@/types';
 import { API_BASE, WS_URL } from '@/lib/apiConfig';
 
-interface BackendGaitItem {
-  cadence?: number;
-  equilibrium?: number;
-  frequency?: number;
-  posturalSway?: number;
-  stepCount?: number;
-  strideLength?: number;
-  timestamp?: string;
-  walkingSpeed?: number;
-}
-
 interface GaitMetricsState {
   data: GaitDataEntry[] | null;
   loading: boolean;
@@ -31,20 +20,10 @@ export const useGaitMetrics = (): GaitMetricsState => {
   const wsRef = useRef<WebSocket | null>(null);
   const historicalData = useRef<GaitDataEntry[]>([]);
 
-  // Check if API configuration is valid
-  useEffect(() => {
-    if (!API_BASE || !WS_URL) {
-      const configError = new Error('Backend URL not configured. Please check apiConfig.ts or set VITE_API_URL environment variable.');
-      setState(prev => ({ ...prev, error: configError, loading: false }));
-      return;
-    }
-  }, []);
 
   useEffect(() => {
     // Initialize WebSocket connection
     const connectWebSocket = () => {
-      if (!WS_URL) return; // Guard against undefined WS_URL
-
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
@@ -55,14 +34,12 @@ export const useGaitMetrics = (): GaitMetricsState => {
 
       ws.onmessage = (event) => {
         try {
-          const parsedData = JSON.parse(event.data);
-
-          if (typeof parsedData === 'object' && parsedData !== null && 'type' in parsedData && parsedData.type === 'connection') {
-            console.log((parsedData as { message: string }).message);
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'connection') {
+            console.log(data.message);
             return;
           }
-
-          const data: BackendGaitItem = parsedData as BackendGaitItem;
 
           // Map backend data to frontend type
           const gaitEntry: GaitDataEntry = {
@@ -75,7 +52,7 @@ export const useGaitMetrics = (): GaitMetricsState => {
             stepWidth: 0, // Not available in backend, default to 0
             steps: data.stepCount || 0,
             strideLength: data.strideLength || 0,
-            timestamp: new Date(data.timestamp || Date.now()).getTime(),
+            timestamp: new Date(data.timestamp).getTime(),
             walkingSpeed: data.walkingSpeed || 0,
           };
 
@@ -117,15 +94,13 @@ export const useGaitMetrics = (): GaitMetricsState => {
   // Fetch initial historical data from API
   useEffect(() => {
     const fetchHistoricalData = async () => {
-      if (!API_BASE) return; // Guard against undefined API_BASE
-
       try {
         const response = await fetch(`${API_BASE}/api/data/historical`);
         if (response.ok) {
-          const result: { success: boolean; data: BackendGaitItem[] } = await response.json();
+          const result = await response.json();
           if (result.success && result.data) {
             // Map backend historical data to frontend type
-            const mappedData: GaitDataEntry[] = result.data.map((item: BackendGaitItem) => ({
+            const mappedData: GaitDataEntry[] = result.data.map((item: Record<string, any>) => ({
               cadence: item.cadence || 0,
               equilibriumScore: item.equilibrium || 0,
               frequency: item.frequency || 0,
@@ -135,7 +110,7 @@ export const useGaitMetrics = (): GaitMetricsState => {
               stepWidth: 0,
               steps: item.stepCount || 0,
               strideLength: item.strideLength || 0,
-              timestamp: new Date(item.timestamp || Date.now()).getTime(),
+              timestamp: new Date(item.timestamp).getTime(),
               walkingSpeed: item.walkingSpeed || 0,
             })).reverse(); // Reverse to have latest first
 
