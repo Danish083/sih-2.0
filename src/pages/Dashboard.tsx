@@ -80,7 +80,7 @@ export default function Dashboard() {
     stepWidth: <Footprints className="h-5 w-5" />,
     strideLength: <BarChart3 className="h-5 w-5" />,
     walkingSpeed: <TrendingUp className="h-5 w-5" />,
-    phaseMean: <Activity className="h-5 w-5" />,
+    kneeForce: <Activity className="h-5 w-5" />,
   };
 
   const formattedGaitMetrics = latestGaitEntry ? [
@@ -141,11 +141,11 @@ export default function Dashboard() {
       color: 'warning' as const 
     },
     { 
-      title: 'Phase Mean', 
-      value: latestGaitEntry.gaitCyclePhaseMean, 
-      unit: '', 
-      status: 'Balanced', 
-      icon: iconMap.phaseMean, 
+      title: 'Knee Force', 
+      value: Math.round(latestGaitEntry.kneeForce * 100) / 100, 
+      unit: 'G', 
+      status: 'Normal', 
+      icon: iconMap.kneeForce, 
       color: 'purple' as const 
     },
   ] : [];

@@ -6,6 +6,7 @@ interface BackendGaitItem {
   cadence?: number;
   equilibrium?: number;
   frequency?: number;
+  kneeForce?: number;
   posturalSway?: number;
   stepCount?: number;
   strideLength?: number;
@@ -69,12 +70,12 @@ export const useGaitMetrics = (): GaitMetricsState => {
             cadence: data.cadence || 0,
             equilibriumScore: data.equilibrium || 0,
             frequency: data.frequency || 0,
-            gaitCyclePhaseMean: 0, // Not available in backend, default to 0
             posturalSway: data.posturalSway || 0,
             sensors: [], // Not available in backend
             stepWidth: 0, // Not available in backend, default to 0
             steps: data.stepCount || 0,
             strideLength: data.strideLength || 0,
+            kneeForce: data.kneeForce || 0,
             timestamp: new Date(data.timestamp || Date.now()).getTime(),
             walkingSpeed: data.walkingSpeed || 0,
           };
@@ -135,12 +136,12 @@ export const useGaitMetrics = (): GaitMetricsState => {
               cadence: item.cadence || 0,
               equilibriumScore: item.equilibrium || 0,
               frequency: item.frequency || 0,
-              gaitCyclePhaseMean: 0,
               posturalSway: item.posturalSway || 0,
               sensors: [],
               stepWidth: 0,
               steps: item.stepCount || 0,
               strideLength: item.strideLength || 0,
+              kneeForce: item.kneeForce || 0,
               timestamp: new Date(item.timestamp || Date.now()).getTime(),
               walkingSpeed: item.walkingSpeed || 0,
             })).reverse(); // Reverse to have latest first
