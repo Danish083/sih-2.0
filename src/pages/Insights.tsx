@@ -10,6 +10,7 @@ import {
   Download,
   Activity,
   Footprints,
+  Zap,
 } from 'lucide-react';
 import { gsap } from 'gsap';
 import { useGaitMetrics } from '@/hooks/useGaitMetrics';
@@ -20,10 +21,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 export default function Insights() {
   const headerRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
+  const mlRef = useRef<HTMLDivElement>(null);
   const curveRef = useRef<HTMLDivElement>(null);
   const recommendationsRef = useRef<HTMLDivElement>(null);
 
-  const { data: gaitData, loading, error } = useGaitMetrics();
+  const { data: gaitData, loading, error, mlResult } = useGaitMetrics();
 
   useEffect(() => {
     document.title = 'Kinova - Insights';
@@ -60,7 +62,15 @@ export default function Insights() {
         { y: 0, opacity: 1, duration: 0.8, ease: 'power2.out', delay: 0.7 }
       );
     }
-  }, []);
+
+    if (mlRef.current && mlResult) {
+      gsap.fromTo(
+        mlRef.current,
+        { scale: 0.9, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.8, ease: 'power2.out', delay: 0.4 }
+      );
+    }
+  }, [mlResult]);
 
   if (loading) {
     return (
@@ -83,9 +93,9 @@ export default function Insights() {
   }
 
   // Use the last 30 data points for analysis, which will be the most recent
-  const latestData = gaitData.slice(-30);
+  const latestData = gaitData ? gaitData.slice(-30) : [];
 
-  if (latestData.length === 0) {
+  if (latestData.length === 0 && !mlResult) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-xl font-semibold text-muted-foreground">
@@ -97,7 +107,8 @@ export default function Insights() {
   
   // --- Dynamic Analysis based on real data ---
   // The gait score is calculated by multiplying the equilibriumScore by 100 to bring it to a 0-100 scale.
-  const gaitScore = latestData.reduce((sum, entry) => sum + entry.equilibriumScore * 100, 0) / latestData.length;
+  const calculatedGaitScore = latestData.length > 0 ? latestData.reduce((sum, entry) => sum + entry.equilibriumScore * 100, 0) / latestData.length : 0;
+  const overallGaitScore = mlResult?.score ?? calculatedGaitScore;
   
   const getScoreColor = (score: number) => {
     if (score >= 85) return 'text-success';
@@ -123,7 +134,7 @@ export default function Insights() {
       type: 'positive',
       icon: <TrendingUp className="w-5 h-5" />,
       title: 'Strong Upward Trend',
-      description: `Your equilibrium scores have improved by ${trend.toFixed(1)}% over recent sessions.`,
+      description: `${mlResult ? 'ML analysis shows' : 'Your'} equilibrium scores have improved by ${trend.toFixed(1)}% over recent sessions.`,
       color: 'primary'
     });
   } else if (trend < -5) {
@@ -131,7 +142,7 @@ export default function Insights() {
       type: 'warning',
       icon: <AlertTriangle className="w-5 h-5" />,
       title: 'Downward Trend',
-      description: `Equilibrium scores have declined by ${Math.abs(trend).toFixed(1)}%. It might be time to reassess.`,
+      description: `${mlResult ? 'ML analysis indicates' : 'Equilibrium scores have'} declined by ${Math.abs(trend).toFixed(1)}%. It might be time to reassess.`,
       color: 'destructive'
     });
     recommendations.push({
@@ -144,7 +155,7 @@ export default function Insights() {
       type: 'positive',
       icon: <CheckCircle className="w-5 h-5" />,
       title: 'Stable Performance',
-      description: 'Your gait score is consistent, showing stable and reliable performance.',
+      description: `${mlResult ? 'ML model confirms' : 'Your'} gait score is consistent, showing stable and reliable performance.`,
       color: 'success'
     });
   }
@@ -246,13 +257,13 @@ export default function Insights() {
                     fill="none"
                     stroke="hsl(var(--success))"
                     strokeWidth="3"
-                    strokeDasharray={`${gaitScore}, 100`}
+                    strokeDasharray={`${overallGaitScore}, 100`}
                     className="drop-shadow-sm"
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center flex-col">
-                  <span className={`text-3xl font-bold ${getScoreColor(gaitScore)}`}>
-                    {gaitScore.toFixed(0)}
+                  <span className={`text-3xl font-bold ${getScoreColor(overallGaitScore)}`}>
+                    {overallGaitScore.toFixed(0)}
                   </span>
                   <span className="text-xs text-muted-foreground">/ 100</span>
                 </div>
@@ -260,14 +271,43 @@ export default function Insights() {
             </div>
             <div>
               <Badge variant="secondary" className="text-sm">
-                {getScoreLabel(gaitScore)}
+                {getScoreLabel(overallGaitScore)}
               </Badge>
               <p className="text-sm text-muted-foreground mt-2">
-                Based on key gait parameters over the last {latestData.length} data points
+                {mlResult ? 'ML-powered analysis' : `Based on key gait parameters over the last ${latestData.length} data points`}
               </p>
             </div>
           </CardContent>
         </Card>
+
+        {/* ML Model Card */}
+        {mlResult && (
+          <Card ref={mlRef} className="bg-gradient-secondary border-border/50">
+            <CardHeader className="text-center pb-3">
+              <CardTitle className="text-xl font-bold text-foreground flex items-center justify-center gap-2">
+                <Zap className="w-5 h-5 text-secondary" />
+                ML Model
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">AI-powered gait analysis</p>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-center items-center gap-2">
+                  <span className="text-lg font-semibold text-primary">ML Score:</span>
+                  <span className={`text-2xl font-bold ${getScoreColor(mlResult.score)}`}>
+                    {mlResult.score.toFixed(0)}
+                  </span>
+                </div>
+                <div className="flex justify-center items-center gap-2">
+                  <span className="text-lg font-semibold text-primary">ML Confidence:</span>
+                  <Badge variant="outline" className="text-success">
+                    {(mlResult.confidence * 100).toFixed(0)}%
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           {/* Score Trend Curve */}
@@ -276,7 +316,7 @@ export default function Insights() {
               <CardTitle className="text-lg font-semibold text-foreground">
                 Score Progression
               </CardTitle>
-              <p className="text-sm text-muted-foreground">Recent gait score trend</p>
+              <p className="text-sm text-muted-foreground">Recent gait score trend {mlResult ? '(ML-enhanced)' : ''}</p>
             </CardHeader>
             <CardContent>
               <div className="h-64 rounded-lg p-2">

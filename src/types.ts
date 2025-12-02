@@ -36,3 +36,8 @@ export interface GaitData {
 export interface FirebaseRoot {
   gaitData: GaitData;
 }
+
+export interface MLGaitResult {
+  score: number;
+  confidence: number;
+}
