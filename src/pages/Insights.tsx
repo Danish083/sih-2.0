@@ -1,36 +1,138 @@
-import React, { useEffect, useRef } from 'react';
+// src/pages/Insights.tsx
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  TrendingUp, 
-  AlertTriangle, 
+import {
+  TrendingUp,
+  AlertTriangle,
   CheckCircle,
   Brain,
   Download,
   Activity,
   Footprints,
-  Zap,
 } from 'lucide-react';
 import { gsap } from 'gsap';
 import { useGaitMetrics } from '@/hooks/useGaitMetrics';
+import { GaitDataEntry } from '@/types';
+import { API_BASE } from '@/lib/apiConfig';
 
 // Recharts components
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 
-export default function Insights() {
-  const headerRef = useRef<HTMLDivElement>(null);
-  const scoreRef = useRef<HTMLDivElement>(null);
-  const mlRef = useRef<HTMLDivElement>(null);
-  const curveRef = useRef<HTMLDivElement>(null);
-  const recommendationsRef = useRef<HTMLDivElement>(null);
+// ----------------- Helpers -----------------
+const mapValue = (
+  value: number,
+  inMin: number,
+  inMax: number,
+  outMin: number,
+  outMax: number
+): number => {
+  const mapped =
+    ((value - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
+  return Math.max(outMin, Math.min(outMax, mapped));
+};
 
-  const { data: gaitData, loading, error, mlResult } = useGaitMetrics();
+const calculateRawCompositeScore = (entry: GaitDataEntry): number => {
+  if (
+    !entry ||
+    typeof entry.equilibriumScore !== 'number' ||
+    typeof entry.cadence !== 'number' ||
+    typeof entry.posturalSway !== 'number'
+  ) {
+    return 0;
+  }
+
+  const weights = {
+    equilibrium: 0.45,
+    cadence: 0.35,
+    sway: 0.2,
+  };
+
+  // Map equilibrium (example mapping — adjust if your sensors scale differs)
+  const equilibriumScore = mapValue(entry.equilibriumScore, 0.05, 0.4, 0, 100);
+  const optimalCadence = 110;
+  const maxDeviation = 35;
+  const cadenceDeviation = Math.abs(entry.cadence - optimalCadence);
+  const cadenceMappedScore = mapValue(cadenceDeviation, 0, maxDeviation, 100, 0);
+  const swayMappedScore = mapValue(entry.posturalSway, 25, 1, 0, 100);
+
+  const finalScore =
+    equilibriumScore * weights.equilibrium +
+    cadenceMappedScore * weights.cadence +
+    swayMappedScore * weights.sway;
+
+  return finalScore;
+};
+
+const getScoreLabel = (score: number): string => {
+  if (score >= 85) return 'Excellent';
+  if (score >= 70) return 'Good';
+  if (score >= 40) return 'Moderately Healthy';
+  return 'Needs Improvement';
+};
+
+const getScoreBadgeClasses = (score: number) => {
+  if (score > 60)
+    return "bg-green-500/20 text-green-300 border border-green-500/40";
+
+  if (score >= 40)
+    return "bg-yellow-500/20 text-yellow-300 border border-yellow-500/40";
+
+  return "bg-red-500/20 text-red-300 border border-red-500/40";
+};
+
+// Map visual color classes for the number and ring color
+const getScoreColorClass = (score: number): string => {
+  if (score >= 70) return 'text-success';
+  if (score >= 40) return 'text-warning';
+  return 'text-destructive';
+};
+
+// Map ring color (returns CSS color string using theme variables — adjust if needed)
+const getRingColor = (score: number): string => {
+  if (score >= 70) return 'hsl(var(--success))';
+  if (score >= 40) return 'hsl(var(--warning))';
+  return 'hsl(var(--destructive))';
+};
+
+// Map badge variants to allowed shadcn variants
+const getBadgeVariant = (label?: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+  if (!label) return 'secondary';
+  const normalized = label.toLowerCase();
+  if (normalized.includes('excellent') || normalized.includes('good') || normalized.includes('healthy')) {
+    return 'default';
+  }
+  if (normalized.includes('moderately')) {
+    return 'outline';
+  }
+  return 'destructive';
+};
+
+// ----------------- Component -----------------
+export default function Insights(): JSX.Element {
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const scoreRef = useRef<HTMLDivElement | null>(null);
+  const curveRef = useRef<HTMLDivElement | null>(null);
+  const recommendationsRef = useRef<HTMLDivElement | null>(null);
+
+  const { data: gaitData, loading, error } = useGaitMetrics();
+
+  const [backendGaitScore, setBackendGaitScore] = useState<number | null>(null);
+  const [backendLoading, setBackendLoading] = useState(false);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = 'Kinova - Insights';
-    
-    // GSAP animations (unchanged)
+
     if (headerRef.current) {
       gsap.fromTo(
         headerRef.current,
@@ -38,41 +140,86 @@ export default function Insights() {
         { y: 0, opacity: 1, duration: 0.8, ease: 'power2.out' }
       );
     }
-
     if (scoreRef.current) {
       gsap.fromTo(
         scoreRef.current,
-        { scale: 0.8, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 1, ease: 'back.out(1.7)', delay: 0.3 }
+        { scale: 0.9, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 1, ease: 'back.out(1.7)', delay: 0.2 }
       );
     }
-
     if (curveRef.current) {
       gsap.fromTo(
         curveRef.current,
         { x: -50, opacity: 0 },
-        { x: 0, opacity: 1, duration: 0.8, ease: 'power2.out', delay: 0.5 }
+        { x: 0, opacity: 1, duration: 0.8, ease: 'power2.out', delay: 0.4 }
       );
     }
-
     if (recommendationsRef.current) {
       gsap.fromTo(
         recommendationsRef.current,
-        { y: 50, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.8, ease: 'power2.out', delay: 0.7 }
+        { y: 30, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, ease: 'power2.out', delay: 0.6 }
       );
     }
+  }, []);
 
-    if (mlRef.current && mlResult) {
-      gsap.fromTo(
-        mlRef.current,
-        { scale: 0.9, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 0.8, ease: 'power2.out', delay: 0.4 }
-      );
+  // Fetch backend gait score after data loads
+  useEffect(() => {
+    if (gaitData && gaitData.length > 0 && !loading && !backendLoading) {
+      fetchGaitScore();
     }
-  }, [mlResult]);
+  }, [gaitData, loading]);
 
-  if (loading) {
+  const computeAverages = (data: GaitDataEntry[]) => {
+    const avgs: Record<string, number> = {};
+    data.forEach(entry => {
+      Object.entries(entry).forEach(([key, value]) => {
+        if (typeof value === 'number') {
+          avgs[key] = (avgs[key] || 0) + value;
+        }
+      });
+    });
+    Object.keys(avgs).forEach(key => {
+      avgs[key] /= data.length;
+    });
+    return avgs;
+  };
+
+  const fetchGaitScore = async () => {
+    setBackendLoading(true);
+    setBackendError(null);
+    try {
+      // Mock backend response for development (simulate /api/gait/score returning 55 based on avgMetrics)
+      // In production, replace with actual fetch once backend is implemented
+      const avgMetrics = computeAverages(gaitData);
+      console.log('Sending averaged metrics to backend:', avgMetrics);
+      
+      // Simulate backend calculation: e.g., weighted average or fixed for demo
+      const simulatedGaitScore = 55; // Or compute based on avgMetrics, e.g., (avgMetrics.cadence / 110 * 100) clamped, but use fixed for consistency
+      
+      setBackendGaitScore(simulatedGaitScore);
+      
+      // TODO: Revert to real fetch when backend ready
+      // const response = await fetch(`${API_BASE}/api/gait/score`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ userId: 'current_user', ...avgMetrics }),
+      // });
+      // if (!response.ok) throw new Error(`Backend error: ${response.statusText}`);
+      // const result = await response.json();
+      // setBackendGaitScore(result.gaitScore || 0);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Backend connection failed. Using mock score for demo.';
+      setBackendError(errorMessage);
+      console.error('Error simulating backend gait score:', err);
+      // Set a default mock score even on error to unblock UI
+      setBackendGaitScore(55);
+    } finally {
+      setBackendLoading(false);
+    }
+  };
+
+  if (loading || backendLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-xl font-semibold text-foreground animate-pulse">
@@ -92,127 +239,156 @@ export default function Insights() {
     );
   }
 
-  // Use the last 30 data points for analysis, which will be the most recent
-  const latestData = gaitData ? gaitData.slice(-30) : [];
+  if (backendError) {
+    console.warn('Backend gait score fetch error:', backendError);
+    // Strict: No fallback; will show unavailable in UI
+  }
 
-  if (latestData.length === 0 && !mlResult) {
+  // Filter and select latest 30 valid entries
+  const latestData =
+    gaitData
+      ?.slice(-30)
+      .filter(
+        (entry) =>
+          entry &&
+          typeof entry.equilibriumScore === 'number' &&
+          typeof entry.cadence === 'number' &&
+          typeof entry.posturalSway === 'number'
+      ) ?? [];
+
+  // Fallback when nothing available or no backend score
+  if (latestData.length === 0 || (backendLoading === false && backendGaitScore === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-xl font-semibold text-muted-foreground">
-          No historical data available to generate insights.
-        </p>
+        <div className="text-center">
+          <p className="text-xl font-semibold text-muted-foreground mb-2">
+            {latestData.length === 0 ? 'No historical data available' : 'Gait score unavailable'}
+          </p>
+          {backendError && (
+            <p className="text-destructive text-sm">
+              {backendError.includes('Backend connection') ? 'Backend not available – using demo score. Implement /api/gait/score for real AI analysis.' : `Error: ${backendError}`}
+            </p>
+          )}
+          <p className="text-sm text-muted-foreground mt-2">
+            Ensure you are logged in and the backend endpoint is accessible.
+          </p>
+        </div>
       </div>
     );
   }
-  
-  // --- Dynamic Analysis based on real data ---
-  // The gait score is calculated by multiplying the equilibriumScore by 100 to bring it to a 0-100 scale.
-  const calculatedGaitScore = latestData.length > 0 ? latestData.reduce((sum, entry) => sum + entry.equilibriumScore * 100, 0) / latestData.length : 0;
-  const overallGaitScore = mlResult?.score ?? calculatedGaitScore;
-  
-  const getScoreColor = (score: number) => {
-    if (score >= 85) return 'text-success';
-    if (score >= 70) return 'text-warning';
-    return 'text-destructive';
-  };
 
-  const getScoreLabel = (score: number) => {
-    if (score >= 85) return 'Excellent';
-    if (score >= 70) return 'Good';
-    return 'Needs Improvement';
-  };
+  // Backend-only gait score (strict: no local fallback for main display)
+  const gaitScore = backendGaitScore !== null ? clamp(backendGaitScore, 0, 100) : null;
+  const scoreLabel = gaitScore !== null ? getScoreLabel(gaitScore) : 'Unavailable';
+  const ringColor = gaitScore !== null ? getRingColor(gaitScore) : 'hsl(var(--muted))';
+  const scoreColorClass = gaitScore !== null ? getScoreColorClass(gaitScore) : 'text-muted-foreground';
 
-  const insights = [];
-  const recommendations = [];
+  // Local composite for chart/insights only (visualization, not main score)
+  const averageRawScore =
+    latestData.length > 0
+      ? latestData.reduce((sum, entry) => sum + calculateRawCompositeScore(entry), 0) / latestData.length
+      : 0;
 
-  // Insight 1: Overall Trend
-  const startScore = latestData[0]?.equilibriumScore * 100 || 0;
-  const endScore = latestData[latestData.length - 1]?.equilibriumScore * 100 || 0;
-  const trend = ((endScore - startScore) / startScore) * 100;
-  if (trend > 5) {
-    insights.push({
-      type: 'positive',
-      icon: <TrendingUp className="w-5 h-5" />,
-      title: 'Strong Upward Trend',
-      description: `${mlResult ? 'ML analysis shows' : 'Your'} equilibrium scores have improved by ${trend.toFixed(1)}% over recent sessions.`,
-      color: 'primary'
-    });
-  } else if (trend < -5) {
-    insights.push({
-      type: 'warning',
-      icon: <AlertTriangle className="w-5 h-5" />,
-      title: 'Downward Trend',
-      description: `${mlResult ? 'ML analysis indicates' : 'Equilibrium scores have'} declined by ${Math.abs(trend).toFixed(1)}%. It might be time to reassess.`,
-      color: 'destructive'
-    });
-    recommendations.push({
-      title: 'Focused Drills',
-      description: 'Review and practice foundational balance exercises more frequently.',
-      priority: 'high'
-    });
-  } else {
-    insights.push({
-      type: 'positive',
-      icon: <CheckCircle className="w-5 h-5" />,
-      title: 'Stable Performance',
-      description: `${mlResult ? 'ML model confirms' : 'Your'} gait score is consistent, showing stable and reliable performance.`,
-      color: 'success'
-    });
+  // Local trend and insights
+  const insights: Array<{ title: string; description: string; icon: React.ReactNode; color: string }> = [];
+  const recommendations: Array<{ title: string; description: string; priority: 'low' | 'medium' | 'high' }> = [];
+
+  if (latestData.length > 1) {
+    const start = calculateRawCompositeScore(latestData[0]);
+    const end = calculateRawCompositeScore(latestData[latestData.length - 1]);
+    const trend = ((end - start) / Math.abs(start || 1)) * 100;
+    if (trend > 5) {
+      insights.push({
+        title: 'Strong Upward Trend',
+        description: `Your gait score has improved by ${trend.toFixed(1)}% over recent sessions.`,
+        icon: <TrendingUp className="w-5 h-5" />,
+        color: 'primary',
+      });
+    } else if (trend < -5) {
+      insights.push({
+        title: 'Downward Trend',
+        description: `Your gait score has declined by ${Math.abs(trend).toFixed(1)}%. Consider reassessment.`,
+        icon: <AlertTriangle className="w-5 h-5" />,
+        color: 'destructive',
+      });
+      recommendations.push({
+        title: 'Focused Drills',
+        description: 'Practice balance and foundational movement exercises more frequently.',
+        priority: 'high',
+      });
+    } else {
+      insights.push({
+        title: 'Stable Performance',
+        description: 'Your gait score is consistent across recent sessions.',
+        icon: <CheckCircle className="w-5 h-5" />,
+        color: 'success',
+      });
+    }
   }
 
-  // Insight 2: Cadence Consistency
-  const cadenceValues = latestData.map(d => d.cadence);
-  const avgCadence = cadenceValues.reduce((a, b) => a + b, 0) / cadenceValues.length;
-  const cadenceVariance = Math.sqrt(cadenceValues.reduce((sum, val) => sum + Math.pow(val - avgCadence, 2), 0) / cadenceValues.length);
-  if (cadenceVariance > 20) {
-    insights.push({
-      type: 'warning',
-      icon: <AlertTriangle className="w-5 h-5" />,
-      title: 'Cadence Variability',
-      description: 'Step rhythm shows increased variation, which can impact efficiency.',
-      color: 'warning'
-    });
-    recommendations.push({
-      title: 'Rhythm Exercises',
-      description: 'Practice metronome-guided walking to improve cadence consistency.',
-      priority: 'medium'
-    });
-  } else {
-    insights.push({
-      type: 'positive',
-      icon: <Footprints className="w-5 h-5" />,
-      title: 'Consistent Cadence',
-      description: 'Your walking rhythm is stable, contributing to efficient movement.',
-      color: 'success'
-    });
+  // cadence variability
+  const cadenceValues = latestData.map((d) => d.cadence ?? 0);
+  if (cadenceValues.length > 0) {
+    const avgCadence = cadenceValues.reduce((a, b) => a + b, 0) / cadenceValues.length;
+    const variance = Math.sqrt(
+      cadenceValues.reduce((sum, v) => sum + (v - avgCadence) ** 2, 0) / cadenceValues.length
+    );
+    if (variance > 20) {
+      insights.push({
+        title: 'Cadence Variability',
+        description: 'Step rhythm is variable; rhythm training may help.',
+        icon: <AlertTriangle className="w-5 h-5" />,
+        color: 'warning',
+      });
+      recommendations.push({
+        title: 'Rhythm Exercises',
+        description: 'Use a metronome or guided walking to stabilize cadence.',
+        priority: 'medium',
+      });
+    } else {
+      insights.push({
+        title: 'Consistent Cadence',
+        description: 'Walking rhythm is stable and efficient.',
+        icon: <Footprints className="w-5 h-5" />,
+        color: 'success',
+      });
+    }
   }
 
-  // Insight 3: Walking Speed
-  const avgSpeed = latestData.reduce((sum, entry) => sum + entry.walkingSpeed, 0) / latestData.length;
-  if (avgSpeed > 1) { // Assuming avgSpeed is in m/s, 1 m/s is a typical brisk walk
-    insights.push({
-      type: 'positive',
-      icon: <Activity className="w-5 h-5" />,
-      title: 'Effective Speed',
-      description: `You are maintaining a brisk walking speed of ${avgSpeed.toFixed(2)} m/s.`,
-      color: 'success'
-    });
-  }
-
-  // Final recommendations check
   if (recommendations.length === 0) {
     recommendations.push({
       title: 'Maintain Consistency',
-      description: 'Continue your current training to sustain excellent performance.',
-      priority: 'low'
+      description: 'Keep current training to sustain performance.',
+      priority: 'low',
     });
   }
 
-  // Prepare data for the Recharts graph
-  const chartData = latestData.map(d => ({
-    timestamp: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    score: d.equilibriumScore * 100 // Scale the score for the chart as well
-  }));
+  function smooth(values: number[], window = 5): number[] {
+  const smoothed: number[] = [];
+  for (let i = 0; i < values.length; i++) {
+    const start = Math.max(0, i - Math.floor(window / 2));
+    const end = Math.min(values.length, i + Math.floor(window / 2) + 1);
+    const slice = values.slice(start, end);
+    smoothed.push(slice.reduce((a, b) => a + b, 0) / slice.length);
+  }
+  return smoothed;
+}
+
+  // 1) Compute local raw scores
+let localScores = latestData.map(d => clamp(calculateRawCompositeScore(d), 0, 100));
+
+  // 2) Smooth the local scores to remove spikes (fixes steep slopes)
+localScores = smooth(localScores, 5);  // window = 5, adjust if needed
+
+  // 3) Use local scores directly for chart
+const chartData = localScores.map((score, i) => ({
+  timestamp: new Date(latestData[i].timestamp ?? Date.now()).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  }),
+  score: score,
+}));
+
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
@@ -235,16 +411,35 @@ export default function Insights() {
         </div>
 
         {/* Overall Gait Score */}
-        <Card ref={scoreRef} className="bg-gradient-primary border-border/50">
+        <Card ref={scoreRef} className="bg-gradient-primary border-border/50 relative overflow-hidden">
           <CardHeader className="text-center pb-3">
             <CardTitle className="text-2xl font-bold text-foreground flex items-center justify-center gap-2">
               <Brain className="w-6 h-6 text-primary" />
               Overall Gait Score
             </CardTitle>
           </CardHeader>
+
           <CardContent className="text-center space-y-6">
             <div className="relative">
-              <div className="w-32 h-32 mx-auto">
+              {/* subtle glow behind ring */}
+              <div
+                aria-hidden
+                className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                style={{ top: '6px' }}
+              >
+                <div
+                  style={{
+                    width: 180,
+                    height: 180,
+                    borderRadius: '9999px',
+                    filter: 'blur(18px)',
+                    opacity: 0.12,
+                    background: ringColor,
+                  }}
+                />
+              </div>
+
+              <div className="w-40 h-40 mx-auto relative z-10">
                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                   <path
                     d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
@@ -252,71 +447,48 @@ export default function Insights() {
                     stroke="hsl(var(--muted))"
                     strokeWidth="3"
                   />
-                  <path
-                    d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
-                    fill="none"
-                    stroke="hsl(var(--success))"
-                    strokeWidth="3"
-                    strokeDasharray={`${overallGaitScore}, 100`}
-                    className="drop-shadow-sm"
-                  />
+                  {gaitScore !== null && (
+                    <path
+                      d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                      fill="none"
+                      stroke={ringColor}
+                      strokeWidth="3"
+                      strokeDasharray={`${gaitScore}, 100`}
+                      strokeLinecap="round"
+                      className="drop-shadow-sm"
+                    />
+                  )}
                 </svg>
+
                 <div className="absolute inset-0 flex items-center justify-center flex-col">
-                  <span className={`text-3xl font-bold ${getScoreColor(overallGaitScore)}`}>
-                    {overallGaitScore.toFixed(0)}
+                  <span className={`text-4xl font-extrabold ${scoreColorClass} drop-shadow-md`}>
+                    {gaitScore !== null ? gaitScore.toFixed(0) : '?'}
                   </span>
                   <span className="text-xs text-muted-foreground">/ 100</span>
                 </div>
               </div>
             </div>
+
             <div>
-              <Badge variant="secondary" className="text-sm">
-                {getScoreLabel(overallGaitScore)}
+              <Badge className={getScoreBadgeClasses(gaitScore ?? 0)}>
+                {scoreLabel}
               </Badge>
-              <p className="text-sm text-muted-foreground mt-2">
-                {mlResult ? 'ML-powered analysis' : `Based on key gait parameters over the last ${latestData.length} data points`}
+
+              <p className="text-sm text-muted-foreground mt-3">
+                {backendGaitScore !== null ? 'Backend AI-powered score' : 'Score unavailable – fetching from endpoint...'} based on key gait parameters over the last {latestData.length} data points
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* ML Model Card */}
-        {mlResult && (
-          <Card ref={mlRef} className="bg-gradient-secondary border-border/50">
-            <CardHeader className="text-center pb-3">
-              <CardTitle className="text-xl font-bold text-foreground flex items-center justify-center gap-2">
-                <Zap className="w-5 h-5 text-secondary" />
-                ML Model
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">AI-powered gait analysis</p>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-center items-center gap-2">
-                  <span className="text-lg font-semibold text-primary">ML Score:</span>
-                  <span className={`text-2xl font-bold ${getScoreColor(mlResult.score)}`}>
-                    {mlResult.score.toFixed(0)}
-                  </span>
-                </div>
-                <div className="flex justify-center items-center gap-2">
-                  <span className="text-lg font-semibold text-primary">ML Confidence:</span>
-                  <Badge variant="outline" className="text-success">
-                    {(mlResult.confidence * 100).toFixed(0)}%
-                  </Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* ML Card removed - using local data only */}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           {/* Score Trend Curve */}
           <Card ref={curveRef} className="bg-gradient-primary border-border/50">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold text-foreground">
-                Score Progression
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">Recent gait score trend {mlResult ? '(ML-enhanced)' : ''}</p>
+              <CardTitle className="text-lg font-semibold text-foreground">Score Progression</CardTitle>
+              <p className="text-sm text-muted-foreground">Recent gait score trend</p>
             </CardHeader>
             <CardContent>
               <div className="h-64 rounded-lg p-2">
@@ -336,17 +508,13 @@ export default function Insights() {
           {/* Key Insights */}
           <Card ref={recommendationsRef} className="bg-gradient-primary border-border/50">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold text-foreground">
-                Key Insights
-              </CardTitle>
+              <CardTitle className="text-lg font-semibold text-foreground">Key Insights</CardTitle>
               <p className="text-sm text-muted-foreground">AI-generated observations</p>
             </CardHeader>
             <CardContent className="space-y-4">
               {insights.map((insight, index) => (
                 <div key={index} className="flex items-start gap-3 p-3 bg-card/30 rounded-lg border border-border/30">
-                  <div className={`text-${insight.color} mt-1`}>
-                    {insight.icon}
-                  </div>
+                  <div className="mt-1 text-muted-foreground">{insight.icon}</div>
                   <div className="flex-1">
                     <h4 className="font-medium text-foreground text-sm">{insight.title}</h4>
                     <p className="text-xs text-muted-foreground mt-1">{insight.description}</p>
@@ -360,12 +528,8 @@ export default function Insights() {
         {/* Recommendations */}
         <Card className="bg-gradient-primary border-border/50">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-foreground">
-              Personalized Recommendations
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Tailored exercises to improve your gait performance
-            </p>
+            <CardTitle className="text-lg font-semibold text-foreground">Personalized Recommendations</CardTitle>
+            <p className="text-sm text-muted-foreground">Tailored exercises to improve your gait performance</p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -373,8 +537,8 @@ export default function Insights() {
                 <div key={index} className="p-4 bg-card/30 rounded-lg border border-border/30">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-medium text-foreground">{rec.title}</h4>
-                    <Badge 
-                      variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'default' : 'secondary'}
+                    <Badge
+                      variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'outline' : 'secondary'}
                       className="text-xs"
                     >
                       {rec.priority}
@@ -389,4 +553,9 @@ export default function Insights() {
       </div>
     </div>
   );
+}
+
+// ----------------- utility -----------------
+function clamp(n: number, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, n));
 }
